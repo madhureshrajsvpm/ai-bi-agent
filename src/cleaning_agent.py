@@ -40,6 +40,26 @@ def apply_cleaning(df, instruction):
 
     print(f"\nAnalyzing instruction: '{instruction}'")
 
+    # Intercept null-dropping instructions directly
+    if "null" in instruction.lower() and any(
+        word in instruction.lower() for word in ["drop", "remove", "delete"]
+    ):
+        original_shape = df.shape
+        # Check if a specific column is mentioned
+        matched_col = None
+        for col in columns:
+            if col.lower() in instruction.lower():
+                matched_col = col
+                break
+        if matched_col:
+            df = df.dropna(subset=[matched_col])
+        else:
+            df = df.dropna()
+        new_shape = df.shape
+        removed = original_shape[0] - new_shape[0]
+        print(f"Shape changed: {original_shape} → {new_shape}")
+        return df, f"Dropped {removed} rows with null values."
+
     result = cleaning_chain.invoke({
         "columns": columns,
         "sample": sample,
@@ -47,7 +67,7 @@ def apply_cleaning(df, instruction):
     })
 
     print(f"Operation detected: {result}")
-    
+
     original_shape = df.shape
     operation = result.get("operation")
     column = result.get("column")
@@ -58,8 +78,8 @@ def apply_cleaning(df, instruction):
             df = df.drop_duplicates(subset=[column])
         else:
             df = df.drop_duplicates()
-    
-    elif operation == "fills_nulls":
+
+    elif operation == "fill_nulls":
         if column and value is not None:
             df[column] = df[column].fillna(value)
         elif column:
@@ -72,35 +92,17 @@ def apply_cleaning(df, instruction):
     elif operation == "rename_column":
         if column and value:
             df = df.rename(columns={column: value})
-    
+
+    elif operation == "filter_rows":
+        if column and value is not None:
+            df = df[df[column] != value]
+
     elif operation == "convert_type":
         if column and value:
             df[column] = df[column].astype(value)
-        
+
     new_shape = df.shape
-    print(f"Shape changed: {original_shape} -> {new_shape}")
-    print(f"explanation: {result.get('explanation')}")
+    print(f"Shape changed: {original_shape} → {new_shape}")
+    print(f"Explanation: {result.get('explanation')}")
 
     return df, result.get("explanation")
-
-if __name__ == "__main__":
-    track = pd.read_csv("data/itunes/track.csv")
-    print(f"Original track table: {track.shape}")
-    print(f"Null values:\n{track.isnull().sum()}")
-
-
-    instructions = [
-        "fill empty composer fields with unknown",
-        "remove duplicate tracks"
-        "drop the bytes column"
-    ]
-
-    for instruction in instructions:
-        track, explanation = apply_cleaning(track, instruction)
-
-    print(f"\nFinal track table: {track.shape}")
-    print(track.head(3))
-
-    track.to_csv("data/itunes/track_cleaned.csv", index=False)
-    print("\nCleaned file saved to data/itunes/track_cleaned.csv")
-
