@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from dynamic_rag import build_dynamic_index, build_dynamic_chain
 from dynamic_geo import dynamic_geo_analysis, guess_geo_column
 from query_router import smart_query
+from auto_insights import generate_auto_insights
 
 load_dotenv()
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -25,12 +26,14 @@ st.title("📊 AI Business Intelligence Agent")
 st.caption("Upload any dataset — ask questions, clean data, and get geo-aware recommendations.")
 
 # ── Session state ──────────────────────────────────────────
-if "messages"  not in st.session_state: st.session_state.messages  = []
-if "df"        not in st.session_state: st.session_state.df        = None
-if "df_name"   not in st.session_state: st.session_state.df_name   = None
-if "all_dfs"   not in st.session_state: st.session_state.all_dfs   = {}
-if "rag_chain" not in st.session_state: st.session_state.rag_chain = None
-if "rag_ready" not in st.session_state: st.session_state.rag_ready = False
+if "messages"      not in st.session_state: st.session_state.messages      = []
+if "df"            not in st.session_state: st.session_state.df            = None
+if "df_name"       not in st.session_state: st.session_state.df_name       = None
+if "all_dfs"       not in st.session_state: st.session_state.all_dfs       = {}
+if "rag_chain"     not in st.session_state: st.session_state.rag_chain     = None
+if "rag_ready"     not in st.session_state: st.session_state.rag_ready     = False
+if "last_insights" not in st.session_state: st.session_state.last_insights = None
+if "last_profile"  not in st.session_state: st.session_state.last_profile  = None
 
 # ── Sidebar ────────────────────────────────────────────────
 with st.sidebar:
@@ -323,8 +326,34 @@ with tab1:
         else:
             st.success("✅ No null values found.")
 
-        st.dataframe(df.head(50), use_container_width=True)
+# Auto Insights
+        st.divider()
+        col_insight, col_btn = st.columns([4, 1])
+        with col_insight:
+            st.subheader("🤖 Auto Insights")
+        with col_btn:
+            run_insights = st.button("✨ Generate Insights")
 
+        if run_insights:
+            with st.spinner("Analysing your dataset..."):
+                try:
+                    insights, profile = generate_auto_insights(
+                        df, dataset_name=st.session_state.df_name
+                    )
+                    st.session_state.last_insights = insights
+                    st.session_state.last_profile  = profile
+                except Exception as e:
+                    st.error(f"Error generating insights: {e}")
+
+        if "last_insights" in st.session_state and st.session_state.last_insights:
+            for line in st.session_state.last_insights.strip().split("\n"):
+                line = line.strip()
+                if line:
+                    st.info(line)
+
+        st.divider()
+        st.dataframe(df.head(50), use_container_width=True)
+        
         st.subheader("📊 Quick Visualizations")
         num_cols = df.select_dtypes(include="number").columns.tolist()
         cat_cols = df.select_dtypes(include="object").columns.tolist()
