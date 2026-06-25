@@ -8,6 +8,7 @@ from dynamic_rag import build_dynamic_index, build_dynamic_chain
 from dynamic_geo import dynamic_geo_analysis, guess_geo_column
 from query_router import smart_query
 from auto_insights import generate_auto_insights
+from report_generator import generate_report
 
 load_dotenv()
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -440,14 +441,40 @@ with tab2:
                     st.error(f"Error: {e}")
 
         st.divider()
-        st.subheader("⬇️ Download Cleaned Data")
-        csv = st.session_state.df.to_csv(index=False)
-        st.download_button(
-            label="⬇️ Download Cleaned CSV",
-            data=csv,
-            file_name="cleaned_data.csv",
-            mime="text/csv"
-        )
+        col_dl1, col_dl2 = st.columns(2)
+
+        with col_dl1:
+            st.subheader("⬇️ Download Cleaned Data")
+            csv = st.session_state.df.to_csv(index=False)
+            st.download_button(
+                label="⬇️ Download Cleaned CSV",
+                data=csv,
+                file_name="cleaned_data.csv",
+                mime="text/csv"
+            )
+
+        with col_dl2:
+            st.subheader("📄 Export Executive Report")
+            if st.button("Generate Word Report"):
+                if st.session_state.get("last_insights") is None:
+                    st.warning("Generate Auto Insights first from the Data Explorer tab.")
+                else:
+                    with st.spinner("Building report..."):
+                        try:
+                            report_bytes = generate_report(
+                                df=st.session_state.df,
+                                dataset_name=st.session_state.df_name,
+                                insights_text=st.session_state.last_insights,
+                                profile=st.session_state.last_profile
+                            )
+                            st.download_button(
+                                label="📥 Download Report (.docx)",
+                                data=report_bytes,
+                                file_name=f"BI_Report_{st.session_state.df_name.replace(' ', '_')}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            )
+                        except Exception as e:
+                            st.error(f"Error generating report: {e}")
     else:
         st.info("👈 Load a dataset from the sidebar first.")
 
