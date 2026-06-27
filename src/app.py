@@ -19,12 +19,41 @@ from cleaning_agent import apply_cleaning
 from geo_agent import geo_analysis
 from retriever_test import load_retriever, build_chain
 
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if st.session_state.authenticated:
+        return True
+
+    st.title("🔐 AI Business Intelligence Agent")
+    st.caption("Please enter the password to access the app.")
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        password = st.text_input("Password", type="password", placeholder="Enter password")
+    with col2:
+        st.write("")
+        st.write("")
+        login = st.button("Login")
+
+    if login:
+        if password == os.getenv("APP_PASSWORD", ""):
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password. Please try again.")
+
+    return False
 st.set_page_config(
     page_title="AI BI Agent",
     page_icon="📊",
     layout="wide"
 )
 
+if not check_password():
+    st.stop()
+    
 st.title("📊 AI Business Intelligence Agent")
 st.caption("Upload any dataset — ask questions, clean data, and get geo-aware recommendations.")
 
