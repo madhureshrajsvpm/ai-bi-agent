@@ -107,9 +107,14 @@ def run_timeseries(df, date_col, target_col, periods=6):
     fig.add_trace(go.Scatter(x=future_df["date"], y=future_df["forecast"],
         mode="lines+markers", name="Forecast",
         line=dict(color="#FF6B35", width=2, dash="dash"), marker=dict(symbol="diamond")))
-    fig.update_layout(title=f"{target_col} � Historical + {periods}-Month Forecast",
-        xaxis_title="Date", yaxis_title=target_col, legend=dict(orientation="h"),
-        hovermode="x unified", plot_bgcolor="white", paper_bgcolor="white")
+    fig.update_layout(
+        template="plotly",
+        title=f"{target_col} - Historical + {periods}-Month Forecast",
+        xaxis_title="Date",
+        yaxis_title=target_col,
+        legend=dict(orientation="h"),
+        hovermode="x unified",
+    )
     return ts, future_df, metrics, fig
 
 
@@ -131,7 +136,10 @@ def run_regression(df, target_col, feature_cols):
     fig = px.bar(importance_df, x="Importance", y="Feature", orientation="h",
         title=f"Feature Importance for predicting '{target_col}'",
         color="Importance", color_continuous_scale="Blues")
-    fig.update_layout(plot_bgcolor="white", paper_bgcolor="white")
+    fig.update_layout(
+        template="plotly",
+        margin=dict(l=150),
+    )
     results_df = pd.DataFrame({"Actual": y_test.values, "Predicted": y_pred}).reset_index(drop=True)
     return results_df, metrics, fig
 
