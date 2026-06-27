@@ -1,0 +1,6 @@
+content = open('src/forecasting.py', encoding='utf-8', errors='replace').read()
+content = content.replace('\x97', '-')
+content = content.replace('\u2014', '-')
+content = content.replace('\u2013', '-')
+open('src/forecasting.py', 'w', encoding='utf-8').write(content)
+print('Fixed. Lines:', content.count('\n'))

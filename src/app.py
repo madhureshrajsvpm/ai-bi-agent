@@ -9,6 +9,7 @@ from dynamic_geo import dynamic_geo_analysis, guess_geo_column
 from query_router import smart_query
 from auto_insights import generate_auto_insights
 from report_generator import generate_report
+from forecasting import detect_forecast_type, run_timeseries, run_regression, interpret_forecast
 
 load_dotenv()
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -288,11 +289,12 @@ with st.sidebar:
     run_geo = st.button("Run Geo Analysis")
 
 # ── Main tabs ──────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📋 Data Explorer",
     "🧹 Data Cleaning",
     "💬 BI Chat",
-    "🌍 Geo Insights"
+    "🌍 Geo Insights",
+    "📈 Forecasting"
 ])
 
 # ── Tab 1: Data Explorer ───────────────────────────────────
@@ -600,3 +602,123 @@ with tab4:
                     st.error(f"Error: {e}")
     else:
         st.info("Select a value in the sidebar and click 'Run Geo Analysis'.")
+
+# ── Tab 5: Forecasting ─────────────────────────────────────
+with tab5:
+    st.subheader("📈 AI-Powered Forecasting")
+
+    if st.session_state.df is None:
+        st.info("👈 Load a dataset from the sidebar first.")
+    else:
+        df = st.session_state.df
+        forecast_type, date_cols, num_cols = detect_forecast_type(df)
+
+        if forecast_type is None:
+            st.error("No numeric columns found for forecasting.")
+        else:
+            if forecast_type == "timeseries":
+                st.success("📅 Date column detected — running Time-Series Forecasting")
+
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    date_col = st.selectbox("Date column", date_cols)
+                with col_b:
+                    target_col = st.selectbox("Value to forecast", num_cols)
+                with col_c:
+                    periods = st.slider("Months to forecast", 1, 24, 6)
+                total_months = len(pd.to_datetime(df[date_col], errors="coerce").dt.to_period("M").unique())
+                if total_months < 24:
+                    st.warning(f"⚠️ Only {total_months} months of data detected. Forecast accuracy may be limited — more historical data improves results.")
+                if st.button("Run Forecast"):
+                    with st.spinner("Training XGBoost model..."):
+                        try:
+                            ts, future_df, metrics, fig = run_timeseries(
+                                df, date_col, target_col, periods
+                            )
+                            if ts is None:
+                                st.error("Not enough data for time-series forecasting (need at least 6 months).")
+                            else:
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                                col_m1.metric("MAE",           metrics["MAE"])
+                                col_m2.metric("R² Score",      metrics["R2"])
+                                col_m3.metric("Training rows", metrics["Training rows"])
+                                col_m4.metric("Test rows",     metrics["Test rows"])
+
+                                st.subheader(f"Forecast for next {periods} months")
+                                st.dataframe(
+                                    future_df[["date", "forecast"]].rename(
+                                        columns={"date": "Month", "forecast": f"Predicted {target_col}"}
+                                    ),
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+
+                                key_result = f"Forecast for next {periods} months: {future_df['forecast'].sum():.2f} total predicted {target_col}"
+                                with st.spinner("Generating business interpretation..."):
+                                    interpretation = interpret_forecast(
+                                        "Time-Series XGBoost",
+                                        target_col,
+                                        metrics,
+                                        key_result,
+                                        st.session_state.df_name
+                                    )
+                                st.info(f"💡 {interpretation}")
+
+                        except Exception as e:
+                            st.error(f"Forecasting error: {e}")
+
+            else:
+                st.success("🔢 No date column detected — running Regression Forecasting")
+
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    target_col = st.selectbox("Target variable to predict", num_cols)
+                with col_b:
+                    feature_options = [c for c in num_cols if c != target_col]
+                    feature_cols = st.multiselect(
+                        "Feature columns (predictors)",
+                        feature_options,
+                        default=feature_options[:3]
+                    )
+
+                if st.button("Run Regression") and feature_cols:
+                    with st.spinner("Training XGBoost regression model..."):
+                        try:
+                            results_df, metrics, fig = run_regression(
+                                df, target_col, feature_cols
+                            )
+                            if results_df is None:
+                                st.error("Not enough data for regression (need at least 20 rows).")
+                            else:
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                                col_m1.metric("MAE",           metrics["MAE"])
+                                col_m2.metric("R² Score",      metrics["R2 Score"])
+                                col_m3.metric("Training rows", metrics["Training rows"])
+                                col_m4.metric("Test rows",     metrics["Test rows"])
+
+                                st.subheader("Actual vs Predicted (test set)")
+                                st.dataframe(
+                                    results_df.head(20),
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+
+                                key_result = f"Top predictor: {feature_cols[0]}, MAE: {metrics['MAE']}, R2: {metrics['R2 Score']}"
+                                with st.spinner("Generating business interpretation..."):
+                                    interpretation = interpret_forecast(
+                                        "XGBoost Regression",
+                                        target_col,
+                                        metrics,
+                                        key_result,
+                                        st.session_state.df_name
+                                    )
+                                st.info(f"💡 {interpretation}")
+
+                        except Exception as e:
+                            st.error(f"Regression error: {e}")
+
+                            
