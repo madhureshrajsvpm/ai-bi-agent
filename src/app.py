@@ -10,6 +10,7 @@ from query_router import smart_query
 from auto_insights import generate_auto_insights
 from report_generator import generate_report
 from forecasting import detect_forecast_type, run_timeseries, run_regression, interpret_forecast
+from auto_insights import generate_auto_insights, compute_quality_score
 
 load_dotenv()
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -34,8 +35,11 @@ if "df_name"       not in st.session_state: st.session_state.df_name       = Non
 if "all_dfs"       not in st.session_state: st.session_state.all_dfs       = {}
 if "rag_chain"     not in st.session_state: st.session_state.rag_chain     = None
 if "rag_ready"     not in st.session_state: st.session_state.rag_ready     = False
-if "last_insights" not in st.session_state: st.session_state.last_insights = None
-if "last_profile"  not in st.session_state: st.session_state.last_profile  = None
+if "last_insights"     not in st.session_state: st.session_state.last_insights     = None
+if "last_profile"      not in st.session_state: st.session_state.last_profile      = None
+if "quality_score"     not in st.session_state: st.session_state.quality_score     = None
+if "quality_grade"     not in st.session_state: st.session_state.quality_grade     = None
+if "quality_breakdown" not in st.session_state: st.session_state.quality_breakdown = {}
 
 # ── Sidebar ────────────────────────────────────────────────
 with st.sidebar:
@@ -303,11 +307,24 @@ with tab1:
         df = st.session_state.df
         st.subheader(f"Dataset: {st.session_state.df_name}")
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Rows",        f"{len(df):,}")
         col2.metric("Columns",     len(df.columns))
         col3.metric("Null values", df.isnull().sum().sum())
         col4.metric("Duplicates",  df.duplicated().sum())
+
+# Data quality score
+        if st.session_state.quality_score is not None:
+            col5.metric(
+                "Quality Score",
+                f"{st.session_state.quality_score}/100",
+                st.session_state.quality_grade
+            )
+            with st.expander("📊 Quality Score Breakdown"):
+                for k, v in st.session_state.quality_breakdown.items():
+                    st.write(f"**{k}:** -{v} points")
+        else:
+            col5.metric("Quality Score", "—", "Generate insights first")
 
         # Null breakdown
         nulls = df.isnull().sum()
@@ -345,6 +362,11 @@ with tab1:
                     )
                     st.session_state.last_insights = insights
                     st.session_state.last_profile  = profile
+                    score, grade, color, breakdown = compute_quality_score(df, profile)
+                    st.session_state.quality_score     = score
+                    st.session_state.quality_grade     = grade
+                    st.session_state.quality_breakdown = breakdown
+                    st.rerun()                  
                 except Exception as e:
                     st.error(f"Error generating insights: {e}")
 
@@ -487,9 +509,17 @@ with tab3:
     if not st.session_state.rag_ready:
         st.warning("Load the RAG index from the sidebar first.")
     else:
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
+        col_chat, col_clear = st.columns([5, 1])
+        with col_clear:
+            if st.button("🗑️ Clear Chat"):
+                st.session_state.messages = []
+                st.rerun()
+
+        chat_container = st.container(height=450)
+        with chat_container:
+            for msg in st.session_state.messages:
+                with st.chat_message(msg["role"]):
+                    st.write(msg["content"])
 
         question = st.chat_input("Ask a business question about your data...")
         if question:
@@ -500,13 +530,29 @@ with tab3:
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
                     try:
+                        # Build conversation context from history
+                        history_context = ""
+                        if len(st.session_state.messages) > 1:
+                            history_context = "\n".join([
+                                f"{m['role'].upper()}: {m['content']}"
+                                for m in st.session_state.messages[:-1][-6:]
+                            ])
+                            question_with_context = f"""Previous conversation:
+{history_context}
+
+Current question: {question}
+
+Answer the current question. If it refers to something from the conversation history (like 'that', 'those', 'the same', 'break it down', 'what about'), use the history to understand what it refers to."""
+                        else:
+                            question_with_context = question
+
                         answer, route = smart_query(
                             st.session_state.df,
-                            question,
+                            question_with_context,
                             rag_chain=st.session_state.rag_chain
                         )
                         if route == "aggregate":
-                            st.caption("🧮 Answered using an exact calculation over the full dataset")
+                            st.caption("🧮 Answered using exact calculation over full dataset")
                         elif route == "exploratory":
                             st.caption("🔍 Answered using retrieved sample records")
                     except Exception as e:

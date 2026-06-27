@@ -118,3 +118,68 @@ def generate_auto_insights(df, dataset_name="the dataset"):
         "dataset_name": dataset_name
     })
     return response.content, profile
+
+def compute_quality_score(df, profile):
+    """
+    Compute a 0-100 data quality score based on:
+    - Null values (-30 max penalty)
+    - Duplicate rows (-20 max penalty)
+    - Outliers (-20 max penalty)
+    - Column type variety (-15 max penalty)
+    - Row count adequacy (-15 max penalty)
+    """
+    score = 100
+    total_rows = profile.get("total_rows", 1)
+
+    # Null penalty
+    total_nulls = sum(v["count"] for v in profile.get("null_summary", {}).values())
+    null_pct = total_nulls / (total_rows * len(df.columns)) * 100
+    null_penalty = min(30, null_pct * 3)
+    score -= null_penalty
+
+    # Duplicate penalty
+    dup_pct = profile.get("duplicate_rows", 0) / total_rows * 100
+    dup_penalty = min(20, dup_pct * 2)
+    score -= dup_penalty
+
+    # Outlier penalty
+    outliers = profile.get("outliers", {})
+    if outliers:
+        avg_outlier_pct = sum(v["pct"] for v in outliers.values()) / len(outliers)
+        outlier_penalty = min(20, avg_outlier_pct * 2)
+        score -= outlier_penalty
+
+    # Column type variety (penalise if all columns are same type)
+    num_cols = len(df.select_dtypes(include="number").columns)
+    cat_cols = len(df.select_dtypes(include="object").columns)
+    if num_cols == 0 or cat_cols == 0:
+        score -= 15
+
+    # Row count adequacy
+    if total_rows < 100:
+        score -= 15
+    elif total_rows < 1000:
+        score -= 7
+
+    score = max(0, min(100, round(score)))
+
+    # Grade
+    if score >= 90:
+        grade, color = "A — Excellent", "green"
+    elif score >= 75:
+        grade, color = "B — Good", "blue"
+    elif score >= 60:
+        grade, color = "C — Fair", "orange"
+    elif score >= 40:
+        grade, color = "D — Poor", "red"
+    else:
+        grade, color = "F — Critical", "red"
+
+    breakdown = {
+        "Null penalty":      round(null_penalty, 1),
+        "Duplicate penalty": round(dup_penalty, 1),
+        "Outlier penalty":   round(outliers and min(20, sum(v["pct"] for v in outliers.values()) / len(outliers) * 2) or 0, 1),
+    }
+
+    return score, grade, color, breakdown
+
