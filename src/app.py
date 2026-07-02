@@ -18,20 +18,30 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from cleaning_agent import apply_cleaning, apply_multiple_cleaning
 from geo_agent import geo_analysis
 from retriever_test import load_retriever, build_chain
-import extra_streamlit_components as stx
 from datetime import datetime, timedelta
+import hashlib
 
-import extra_streamlit_components as stx
-from datetime import datetime, timedelta
+st.set_page_config(
+    page_title="AI BI Agent",
+    page_icon="📊",
+    layout="wide"
+)
+
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()[:16]
 
 def check_password():
-    cookie_manager = stx.CookieManager()
-    auth_cookie = cookie_manager.get("ai_bi_auth")
+    correct_password = os.getenv("APP_PASSWORD", "")
+    correct_hash = hash_password(correct_password)
 
-    if auth_cookie == "authenticated":
+    # Check URL param
+    if st.query_params.get("session") == correct_hash:
         st.session_state.authenticated = True
 
     if st.session_state.get("authenticated"):
+        # Keep hash in URL so refresh works
+        st.query_params["session"] = correct_hash
         return True
 
     st.title("🔐 AI Business Intelligence Agent")
@@ -46,29 +56,21 @@ def check_password():
         login = st.button("Login")
 
     if login:
-        if password == os.getenv("APP_PASSWORD", ""):
+        if password == correct_password:
             st.session_state.authenticated = True
-            # Set cookie that expires in 7 days
-            cookie_manager.set(
-                "ai_bi_auth",
-                "authenticated",
-            )
+            st.query_params["session"] = correct_hash
             st.rerun()
         else:
             st.error("Incorrect password. Please try again.")
 
     return False
-st.set_page_config(
-    page_title="AI BI Agent",
-    page_icon="📊",
-    layout="wide"
-)
 
 if not check_password():
     st.stop()
-    
+
 st.title("📊 AI Business Intelligence Agent")
 st.caption("Upload any dataset — ask questions, clean data, and get geo-aware recommendations.")
+    
 
 # ── Session state ──────────────────────────────────────────
 if "messages"      not in st.session_state: st.session_state.messages      = []
