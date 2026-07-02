@@ -15,15 +15,23 @@ from auto_insights import generate_auto_insights, compute_quality_score
 load_dotenv()
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from cleaning_agent import apply_cleaning
+from cleaning_agent import apply_cleaning, apply_multiple_cleaning
 from geo_agent import geo_analysis
 from retriever_test import load_retriever, build_chain
+import extra_streamlit_components as stx
+from datetime import datetime, timedelta
+
+import extra_streamlit_components as stx
+from datetime import datetime, timedelta
 
 def check_password():
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
+    cookie_manager = stx.CookieManager()
+    auth_cookie = cookie_manager.get("ai_bi_auth")
 
-    if st.session_state.authenticated:
+    if auth_cookie == "authenticated":
+        st.session_state.authenticated = True
+
+    if st.session_state.get("authenticated"):
         return True
 
     st.title("🔐 AI Business Intelligence Agent")
@@ -40,6 +48,11 @@ def check_password():
     if login:
         if password == os.getenv("APP_PASSWORD", ""):
             st.session_state.authenticated = True
+            # Set cookie that expires in 7 days
+            cookie_manager.set(
+                "ai_bi_auth",
+                "authenticated",
+            )
             st.rerun()
         else:
             st.error("Incorrect password. Please try again.")
@@ -110,8 +123,10 @@ with st.sidebar:
 
                 if len(dfs) == 1:
                     name = list(dfs.keys())[0]
-                    st.session_state.df = dfs[name]
-                    st.session_state.df_name = name
+                    # Only overwrite df if a new file was uploaded
+                    if st.session_state.df_name != name:
+                        st.session_state.df = dfs[name]
+                        st.session_state.df_name = name
                     st.session_state.all_dfs = dfs
                 else:
                     st.session_state.all_dfs = dfs
@@ -486,7 +501,7 @@ with tab2:
         if st.button("Apply Cleaning") and instruction:
             with st.spinner("Analyzing and applying..."):
                 try:
-                    new_df, explanation = apply_cleaning(df, instruction)
+                    new_df, explanation = apply_multiple_cleaning(df, instruction)
                     st.session_state.df = new_df
                     st.success(f"Done: {explanation}")
                     st.dataframe(new_df.head(20), use_container_width=True)

@@ -106,3 +106,25 @@ def apply_cleaning(df, instruction):
     print(f"Explanation: {result.get('explanation')}")
 
     return df, result.get("explanation")
+
+def apply_multiple_cleaning(df, instruction):
+    """
+    Splits a combined instruction into individual operations
+    and applies them sequentially on the same dataframe.
+    e.g. 'remove nulls and drop duplicates' -> two operations
+    """
+    import re
+    
+    # Split on common conjunctions
+    parts = re.split(r'\band\b|\bthen\b|\balso\b|,', instruction, flags=re.IGNORECASE)
+    parts = [p.strip() for p in parts if p.strip()]
+    
+    explanations = []
+    for part in parts:
+        try:
+            df, explanation = apply_cleaning(df, part)
+            explanations.append(explanation)
+        except Exception as e:
+            explanations.append(f"Could not apply '{part}': {e}")
+    
+    return df, " | ".join(explanations)
